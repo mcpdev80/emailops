@@ -1,0 +1,43 @@
+name: Windows preview - theme unread IMAP
+on:
+  push:
+    branches: [test/windows-dark-unread-imap]
+permissions:
+  contents: read
+jobs:
+  windows-preview:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install npm packages
+        run: npm ci
+      - name: Validate TypeScript and build UI
+        run: npm run build
+      - name: Test dark theme
+        run: npx vitest run src/stores/themeStore.test.ts src/lib/theme.test.ts src/components/Settings/ThemeSetting.test.tsx
+      - name: Test IMAP session reuse
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features imap_session -- --nocapture
+      - name: Test IMAP TLS timeout
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-default-features tls_timeout_fallback -- --nocapture
+      - name: Bundle unsigned Windows NSIS preview (external AI provider)
+        shell: pwsh
+        run: |
+          npx tauri build --no-default-features --features desktop --bundles nsis --config '{"bundle":{"resources":{}}}'
+      - name: Upload preview installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: EmailOps-Windows-IMAP-Dark-Unread-unsigned
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+          retention-days: 7
